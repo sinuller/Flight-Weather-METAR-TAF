@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flight Weather: METAR and TAF</title>
+  <style>
+    /* === CSS (unchanged from previous version) === */
+    :root {
+      --primary-color: #3498db;
+      --primary-dark: #2980b9;
+      --secondary-color: #2c3e50;
+      --success-color: #2ecc71;
+      --error-color: #e74c3c;
+      --warning-color: #f39c12; /* Added for warnings */
+      --bg-color: #f8f9fa;
+      --card-bg: #ffffff;
+      --text-color: #333333;
+      --border-radius: 10px;
+      --box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      --transition: all 0.3s ease;
+    }
+
+    body {
+      font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    section {
+      margin-bottom: 25px;
+      background-color: var(--card-bg);
+      padding: 20px;
+      border-radius: var(--border-radius);
+      box-shadow: var(--box-shadow);
+      transition: var(--transition);
+    }
+
+    section:hover {
+      box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+    }
+
+    h1#main-title {
+      text-align: center;
+      color: var(--secondary-color);
+      margin: 20px 0 30px 0;
+      font-weight: 700;
+      font-size: 2.5rem;
+      letter-spacing: -0.5px;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+      background-color: var(--bg-color);
+      padding: 10px;
+      border-radius: var(--border-radius);
+      box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+    }
+
+    h2 {
+      border-bottom: 2px solid #eaeaea;
+      padding-bottom: 10px;
+      color: var(--primary-dark);
+      position: relative;
+      font-weight: 600;
+      margin-top: 0;
+      display: flex;
+      align-items: center;
+    }
+
+    pre {
+      background: #f4f4f4;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 16px;
+      line-height: 1.5;
+      border-left: 4px solid var(--primary-color);
+      font-weight: 500;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      min-height: 40px;
+    }
+
+    .search-container {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    input {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: var(--border-radius);
+      font-size: 16px;
+      transition: var(--transition);
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+    }
+
+    button {
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      font-size: 16px;
+      transition: var(--transition);
+      font-weight: 500;
+    }
+     button:hover:not(:disabled) {
+      background-color: var(--primary-dark);
+      transform: translateY(-2px);
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      background-color: #bdc3c7;
+      cursor: not-allowed;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(0,0,0,0.1);
+      border-radius: 50%;
+      border-top-color: var(--primary-color);
+      animation: spin 1s ease-in-out infinite;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .status {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #666;
+      text-align: right;
+    }
+
+    .notification {
+      padding: 15px;
+      border-radius: var(--border-radius);
+      margin: 15px 0;
+      font-weight: 500;
+      opacity: 0;
+      transform: translateY(-20px);
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      box-shadow: var(--box-shadow);
+      max-width: 350px;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      display: flex;
+      align-items: center;
+    }
+
+    .notification.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .notification-error {
+      background-color: #fff5f5;
+      color: var(--error-color);
+      border-left: 4px solid var(--error-color);
+    }
+
+    .notification-icon {
+      margin-right: 10px;
+      font-size: 20px;
+    }
+
+    .tooltip {
+      position: relative;
+      display: inline-block;
+      cursor: help;
+      margin-left: 10px;
+      font-size: 14px;
+      color: var(--primary-color);
+      border: 1px solid var(--primary-color);
+      border-radius: 50%;
+      height: 20px;
+      width: 20px;
+      text-align: center;
+      line-height: 18px;
+      font-weight: bold;
+    }
+
+    .tooltip-text {
+      visibility: hidden;
+      width: 300px;
+      background-color: var(--secondary-color);
+      color: #fff;
+      text-align: left;
+      border-radius: var(--border-radius);
+      padding: 15px;
+      position: absolute;
+      z-index: 1;
+      bottom: 150%;
+      left: 50%;
+      margin-left: -150px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      font-weight: normal;
+      font-size: 13px;
+      line-height: 1.5;
+      box-shadow: var(--box-shadow);
+    }
+    .tooltip-text::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      margin-left: -5px;
+      border-width: 5px;
+      border-style: solid;
+      border-color: var(--secondary-color) transparent transparent transparent;
+    }
+
+    .tooltip:hover .tooltip-text {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    #loading-global {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0,0,0,0.5);
+      color: white;
+      z-index: 1000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      backdrop-filter: blur(3px);
+    }
+
+    .loader-container {
+      background-color: white;
+      padding: 30px;
+      border-radius: var(--border-radius);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: var(--box-shadow);
+    }
+
+    #loading-global .loading {
+      width: 40px;
+      height: 40px;
+      margin-bottom: 15px;
+      border-width: 4px;
+    }
+
+    .loading-text {
+      color: var(--text-color);
+      font-weight: 500;
+    }
+
+    .error-container {
+      background-color: #fdecea;
+      color: var(--error-color);
+      border-radius: 6px;
+      padding: 15px;
+      margin: 0;
+      font-weight: 500;
+      border-left: 4px solid var(--error-color);
+      text-align: left;
+    }
+
+    .warning-container {
+      background-color: #fff8e1;
+      color: #8d6e63;
+      border-radius: 6px;
+      padding: 15px;
+      margin: 0;
+      font-weight: 500;
+      border-left: 4px solid var(--warning-color);
+      text-align: left;
+    }
+
+
+    .start-message {
+      text-align: center;
+      padding: 30px;
+      font-size: 18px;
+      color: #666;
+      font-style: italic;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        padding: 15px;
+      }
+      section {
+        padding: 15px;
+      }
+      h1#main-title {
+        font-size: 2.2rem;
+      }
+      .tooltip-text {
+        width: 250px;
+        margin-left: -125px;
+      }
+      .notification {
+        left: 15px;
+        right: 15px;
+        max-width: calc(100% - 30px);
+        top: 15px;
+      }
+    }
+
+    /* Dark mode support */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-color: #121212;
+        --card-bg: #1e1e1e;
+        --text-color: #e0e0e0;
+        --secondary-color: #333;
+      }
+      pre {
+        background: #2c2c2c;
+      }
+      input {
+        background-color: #333;
+        color: #e0e0e0;
+        border-color: #444;
+      }
+       button:disabled {
+        background-color: #555;
+      }
+      .notification-error {
+        background-color: rgba(231, 76, 60, 0.2);
+      }
+      .loader-container {
+        background-color: #1e1e1e;
+      }
+      .loading-text {
+        color: #e0e0e0;
+      }
+      .error-container {
+          background-color: rgba(231, 76, 60, 0.2);
+          color: #f5c6cb;
+          border-left-color: var(--error-color);
+      }
+      .warning-container {
+          background-color: rgba(243, 156, 18, 0.2);
+          color: #fce5cd;
+          border-left-color: var(--warning-color);
+      }
+       .status { /* Lighter status text in Dark Mode */
+           color: #aaa;
+       }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading-global" class="hidden">
+    <div class="loader-container">
+      <div class="loading"></div>
+      <div class="loading-text">Loading data...</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1 id="main-title">Flight Weather: METAR and TAF</h1>
+
+    <section id="station-search">
+      <h2>Search Airport</h2>
+      <div class="search-container">
+        <input type="text" id="stationInput" maxlength="4" style="text-transform: uppercase;" placeholder="Enter ICAO Code (e.g. LSZH)" aria-label="ICAO Code"/>
+        <button id="searchBtn">Search</button>
+        <span id="loading" class="loading hidden"></span>
+      </div>
+    </section>
+
+    <div id="notification" class="notification hidden">
+      <span class="notification-icon"></span>
+      <span id="notification-message"></span>
+    </div>
+
+    <section id="station-info-section">
+      <h2>Station Information</h2>
+      <div id="infoContainer">
+        <div class="start-message" id="startMessage">Please enter an ICAO code to retrieve weather data.</div>
+        <pre id="info" class="hidden">Loading...</pre>
+      </div>
+    </section>
+
+    <section id="metar-section">
+      <h2>
+        METAR
+        <span class="tooltip">i
+          <span class="tooltip-text">
+            METAR (Meteorological Aerodrome Report) is a standardized, current weather report for airfields. Typically contains wind direction/strength, visibility, weather phenomena, cloud base/coverage, temperature, dew point, and air pressure (QNH). Usually updated hourly or half-hourly.
+          </span>
+        </span>
+      </h2>
+      <div id="metarContainer">
+        <div class="start-message" id="metarStartMessage">Please enter an ICAO code to retrieve METAR data.</div>
+        <pre id="metar" class="hidden">Loading...</pre>
+      </div>
+      <div id="metarStatus" class="status"></div>
+    </section>
+
+    <section id="taf-section">
+      <h2>
+        TAF
+        <span class="tooltip">i
+          <span class="tooltip-text">
+            TAF (Terminal Aerodrome Forecast) is a weather forecast for an airfield, usually for the next 24 to 30 hours. Describes expected changes in wind, visibility, weather, and clouds in a coded format. Typically issued every 6 hours or updated when significant changes occur (AMD TAF).
+          </span>
+        </span>
+      </h2>
+      <div id="tafContainer">
+        <div class="start-message" id="tafStartMessage">Please enter an ICAO code to retrieve TAF data.</div>
+        <pre id="taf" class="hidden">Loading...</pre>
+      </div>
+      <div id="tafStatus" class="status"></div>
+    </section>
+  </div>
+
+  <script>
+    // WARNING: API key in frontend is a security risk!
+    const apiKey = 'vZV4_zrEzDnbHV6VZXFb4P2SZI6A4N-OzqAq78Y1-Ec';
+    const stationInput = document.getElementById('stationInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const loadingSpinner = document.getElementById('loading');
+    const globalLoader = document.getElementById('loading-global');
+    const notification = document.getElementById('notification');
+    const notificationMessage = document.getElementById('notification-message');
+    const mainTitle = document.getElementById('main-title');
+
+    const infoPre = document.getElementById('info');
+    const metarPre = document.getElementById('metar');
+    const tafPre = document.getElementById('taf');
+    const startMessageInfo = document.getElementById('startMessage');
+    const startMessageMetar = document.getElementById('metarStartMessage');
+    const startMessageTaf = document.getElementById('tafStartMessage');
+    const metarStatusDiv = document.getElementById('metarStatus');
+    const tafStatusDiv = document.getElementById('tafStatus');
+
+
+    function showNotification(message) {
+        notificationMessage.textContent = message;
+        notification.classList.remove('notification-success', 'notification-error', 'hidden');
+        notification.classList.add('notification-error', 'show');
+        const icon = notification.querySelector('.notification-icon');
+        icon.textContent = '✕';
+        setTimeout(() => {
+          notification.classList.remove('show');
+          setTimeout(() => notification.classList.add('hidden'), 300);
+        }, 5000);
+    }
+
+    async function fetchWithAuth(url) {
+      try {
+        console.log(`Workspaceing JSON from: ${url}`);
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        console.log(`Response status: ${response.status}`);
+        if (!response.ok) {
+           const error = new Error(`HTTP Error: ${response.status}`);
+           error.status = response.status;
+           throw error;
+        }
+        const text = await response.text();
+        console.log(`Response content length: ${text.length}`);
+        if (!text || text.trim() === '') {
+           return null;
+        }
+        try {
+          return JSON.parse(text);
+        } catch (parseError) {
+          console.error('JSON Parse error:', parseError);
+          if (text.includes('METAR') || text.includes('TAF')) {
+            return { raw: text.trim() };
+          }
+          throw new Error('Invalid JSON format and no METAR/TAF in text: ' + parseError.message);
+        }
+      } catch (error) {
+        console.error('API request failed:', error);
+        throw error;
+      }
+    }
+
+    async function fetchRawData(url) {
+      try {
+        console.log(`Workspaceing RAW from: ${url}`);
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Accept': 'text/plain'
+          }
+        });
+        console.log(`Response status: ${response.status}`);
+        if (!response.ok) {
+           const error = new Error(`HTTP Error: ${response.status}`);
+           error.status = response.status;
+           throw error;
+        }
+        const text = await response.text();
+        return text.trim();
+      } catch (error) {
+         console.error('Raw API request failed:', error);
+        throw error;
+      }
+    }
+
+    function formatDateTime(dateStr) {
+      if (!dateStr) return 'Unknown';
+      try {
+        const date = new Date(dateStr);
+         if (isNaN(date.getTime())) return 'Invalid date';
+        // Format adjusted for better readability (day.month.year, hour:minute)
+        return date.toLocaleString('en-US', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit'
+        });
+      } catch(e) {
+          return 'Formatting error';
+      }
+    }
+
+    function setPreDisplay(preElement, startMsgElement, content, isError = false, isWarning = false) {
+        startMsgElement.classList.add('hidden');
+        preElement.classList.remove('hidden');
+        if (isError) {
+            preElement.innerHTML = `<div class="error-container">${content}</div>`;
+        } else if (isWarning) {
+            preElement.innerHTML = `<div class="warning-container">${content}</div>`;
+        } else {
+            preElement.textContent = content;
+            if (preElement.id === 'info' && typeof content === 'string') {
+                 preElement.innerHTML = content.replace(/\n/g, '<br>');
+             }
+        }
+    }
+
+    async function fetchStationInfo(station) {
+      setPreDisplay(infoPre, startMessageInfo, 'Loading...');
+      let stationData = null;
+      try {
+        stationData = await fetchWithAuth(`https://avwx.rest/api/station/${station}`);
+        if (!stationData) {
+             setPreDisplay(infoPre, startMessageInfo, `No station information found for ${station}.`, false, true);
+             return null;
+        }
+        const infoText = [
+          `ICAO: ${stationData.icao || 'N/A'}`,
+          `Name: ${stationData.name || 'N/A'}`,
+          `Location: ${stationData.city || 'N/A'}${stationData.country ? ', ' + stationData.country : ''}`,
+          `Position: ${stationData.latitude?.toFixed(4) || '?'}°, ${stationData.longitude?.toFixed(4) || '?'}°`,
+          `Elevation: ${stationData.elevation_ft !== undefined && stationData.elevation_ft !== null ? stationData.elevation_ft + ' ft' : 'N/A'} (${stationData.elevation_m !== undefined && stationData.elevation_m !== null ? stationData.elevation_m + ' m' : 'N/A'})`
+        ].join('\n');
+        setPreDisplay(infoPre, startMessageInfo, infoText);
+        return stationData;
+      } catch (error) {
+         let message = `Error retrieving airport information: ${error.message}`;
+         if (error.status === 404) {
+             message = `Airport ${station} not found or invalid ICAO code.`;
+         }
+         setPreDisplay(infoPre, startMessageInfo, message, true);
+        return null;
+      }
+    }
+
+    async function fetchMetar(station) {
+        setPreDisplay(metarPre, startMessageMetar, 'Loading...');
+        metarStatusDiv.textContent = ''; // *** Reset status ***
+        let metarData = null;
+        try {
+            metarData = await fetchWithAuth(`https://avwx.rest/api/metar/${station}`);
+            if (metarData && metarData.raw && metarData.raw.trim() !== '') {
+                setPreDisplay(metarPre, startMessageMetar, metarData.raw);
+                const timestamp = metarData.time?.dt ? formatDateTime(metarData.time.dt) : 'Unknown';
+                // *** Only show timestamp ***
+                metarStatusDiv.textContent = `Timestamp: ${timestamp}`;
+                return true;
+            } else if (metarData) {
+                 setPreDisplay(metarPre, startMessageMetar, `No current METAR data reported for ${station} (via JSON).`, false, true);
+                 return false;
+            }
+        } catch (jsonError) {
+             if (jsonError.status !== 404) {
+                  console.log('JSON method for METAR failed:', jsonError.message);
+             } else {
+                   setPreDisplay(metarPre, startMessageMetar, `METAR: Airport ${station} not found.`, true);
+                   return false;
+             }
+        }
+        try {
+             const rawText = await fetchRawData(`https://avwx.rest/api/metar/${station}?format=raw`);
+             if (rawText && rawText.includes('METAR')) {
+                  setPreDisplay(metarPre, startMessageMetar, rawText);
+                  // *** No status/timestamp for Raw ***
+                  metarStatusDiv.textContent = '';
+                  return true;
+             } else {
+                  setPreDisplay(metarPre, startMessageMetar, `No current METAR data reported for ${station} (via Raw Text).`, false, true);
+                  return false;
+             }
+        } catch (rawError) {
+              let message = `Error retrieving METAR data (Raw): ${rawError.message}`;
+              if (rawError.status === 404) {
+                   message = `METAR: Airport ${station} not found (Raw).`;
+              }
+              setPreDisplay(metarPre, startMessageMetar, message, true);
+              return false;
+        }
+    }
+
+    async function fetchTaf(station) {
+       setPreDisplay(tafPre, startMessageTaf, 'Loading...');
+       tafStatusDiv.textContent = ''; // *** Reset status ***
+       let tafData = null;
+        try {
+            tafData = await fetchWithAuth(`https://avwx.rest/api/taf/${station}`);
+            if (tafData && tafData.raw && tafData.raw.trim() !== '') {
+                setPreDisplay(tafPre, startMessageTaf, tafData.raw);
+                const timestamp = tafData.time?.dt ? formatDateTime(tafData.time.dt) : 'Unknown';
+                 // *** Only show timestamp ***
+                tafStatusDiv.textContent = `Timestamp: ${timestamp}`;
+                return true;
+            } else if (tafData) {
+                 setPreDisplay(tafPre, startMessageTaf, `No current TAF data reported for ${station} (via JSON).`, false, true);
+                 return false;
+            }
+        } catch (jsonError) {
+             if (jsonError.status !== 404) {
+                  console.log('JSON method for TAF failed:', jsonError.message);
+             } else {
+                   setPreDisplay(tafPre, startMessageTaf, `TAF: Airport ${station} not found.`, true);
+                   return false;
+             }
+        }
+        try {
+             const rawText = await fetchRawData(`https://avwx.rest/api/taf/${station}?format=raw`);
+             if (rawText && rawText.includes('TAF')) {
+                  setPreDisplay(tafPre, startMessageTaf, rawText);
+                   // *** No status/timestamp for Raw ***
+                  tafStatusDiv.textContent = '';
+                  return true;
+             } else {
+                  setPreDisplay(tafPre, startMessageTaf, `No current TAF data reported for ${station} (via Raw Text).`, false, true);
+                  return false;
+             }
+        } catch (rawError) {
+              let message = `Error retrieving TAF data (Raw): ${rawError.message}`;
+              if (rawError.status === 404) {
+                   message = `TAF: Airport ${station} not found (Raw).`;
+              }
+              setPreDisplay(tafPre, startMessageTaf, message, true);
+              return false;
+        }
+    }
+
+    async function updateAll(station) {
+      station = station.toUpperCase();
+      searchBtn.disabled = true;
+      loadingSpinner.classList.remove('hidden');
+      globalLoader.classList.remove('hidden');
+      setPreDisplay(infoPre, startMessageInfo, 'Loading...');
+      setPreDisplay(metarPre, startMessageMetar, 'Loading...');
+      setPreDisplay(tafPre, startMessageTaf, 'Loading...');
+      metarStatusDiv.textContent = '';
+      tafStatusDiv.textContent = '';
+      mainTitle.textContent = `Flight Weather for ${station}...`;
+      document.title = `Flight Weather ${station}...`;
+      let stationDataResult = null;
+      try {
+          stationDataResult = await fetchStationInfo(station);
+          if (stationDataResult) {
+              mainTitle.textContent = `Flight Weather ${stationDataResult.icao || station}`;
+              document.title = `Flight Weather ${stationDataResult.icao || station}: METAR & TAF`;
+              await Promise.allSettled([
+                  fetchMetar(station),
+                  fetchTaf(station)
+              ]);
+          } else {
+              mainTitle.textContent = 'Flight Weather: METAR and TAF';
+              document.title = 'Flight Weather: METAR and TAF';
+              setPreDisplay(metarPre, startMessageMetar, `Station search for ${station} failed.`, false, true);
+              setPreDisplay(tafPre, startMessageTaf, `Station search for ${station} failed.`, false, true);
+              showNotification(`Station information for ${station} could not be loaded.`);
+          }
+      } catch (error) {
+          console.error('Unexpected error updating data:', error);
+          showNotification(`A global error has occurred: ${error.message}`);
+          mainTitle.textContent = 'Flight Weather: METAR and TAF';
+          document.title = 'Flight Weather: METAR and TAF';
+      } finally {
+          searchBtn.disabled = false;
+          loadingSpinner.classList.add('hidden');
+          globalLoader.classList.add('hidden');
+      }
+    }
+
+    searchBtn.addEventListener('click', () => {
+      const station = stationInput.value.trim();
+      if (station.length === 4) {
+        updateAll(station);
+      } else {
+        showNotification('Please enter a valid ICAO code with 4 letters.');
+      }
+    });
+
+    stationInput.addEventListener('keypress', (event) => {
+      if (event.key === 'Enter') {
+        searchBtn.click();
+      }
+    });
+
+     startMessageInfo.classList.remove('hidden');
+     startMessageMetar.classList.remove('hidden');
+     startMessageTaf.classList.remove('hidden');
+     infoPre.classList.add('hidden');
+     metarPre.classList.add('hidden');
+     tafPre.classList.add('hidden');
+
+  </script>
+</body>
+</html>
